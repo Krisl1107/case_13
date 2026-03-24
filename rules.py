@@ -1,75 +1,72 @@
-"""
-Модуль с логикой игры "Жизнь".
-Роль B: Подсчёт соседей и вычисление следующих поколений.
-"""
-
 from typing import List, Tuple
 
 
-# Смещения для 8 соседних клеток
-NEIGHBOR_OFFSETS = [
+neighbor_offsets = [
     (-1, -1), (-1, 0), (-1, 1),
     (0, -1),           (0, 1),
     (1, -1), (1, 0), (1, 1)
 ]
 
 
-def apply_boundary_condition(
-    board: List[List[int]],
-    row: int,
-    col: int,
+def fix_grid_boundaries(
+    game_board: List[List[int]],
+    current_row: int,
+    current_col: int,
     wrap_edges: bool = True
 ) -> Tuple[int, int]:
     """
-    Корректирует координаты с учётом границ.
+    Ensures that the coordinates stay within the grid boundaries, or wraps them if needed.
 
     Args:
-        board: Игровое поле
-        row: Индекс строки
-        col: Индекс столбца
-        wrap_edges: Флаг замкнутых границ
+        game_board: The game board as a list of lists
+        current_row: Current row index
+        current_col: Current column index
+        wrap_edges: Whether to enable wrap-around for edges
 
     Returns:
-        Скорректированные координаты (row, col)
+        Tuple with corrected (row, column) indices
     """
     if not wrap_edges:
-        return row, col
+        return current_row, current_col
 
-    total_rows = len(board)
-    total_cols = len(board[0])
+    total_rows = len(game_board)
+    total_cols = len(game_board[0])
 
-    return row % total_rows, col % total_cols
+    corrected_row = current_row % total_rows
+    corrected_col = current_col % total_cols
+
+    return corrected_row, corrected_col
 
 
 def count_live_neighbors(
-    board: List[List[int]],
-    row: int,
-    col: int,
+    game_board: List[List[int]],
+    row_index: int,
+    col_index: int,
     wrap_edges: bool = True
 ) -> int:
     """
-    Считает количество живых соседей вокруг клетки.
+    Counts how many neighboring cells are alive around a specific cell.
 
     Args:
-        board: Игровое поле
-        row: Индекс строки
-        col: Индекс столбца
-        wrap_edges: Флаг замкнутых границ
+        game_board: The game board as a list of lists
+        row_index: Row position of the cell
+        col_index: Column position of the cell
+        wrap_edges: Whether to enable wrap-around for edges
 
     Returns:
-        Количество живых соседей (от 0 до 8)
+        Number of live neighboring cells (0-8)
     """
-    total_rows = len(board)
-    total_cols = len(board[0])
-    live_neighbors = 0
+    total_rows = len(game_board)
+    total_cols = len(game_board[0])
+    alive_neighbors_count = 0
 
-    for row_offset, col_offset in NEIGHBOR_OFFSETS:
-        neighbor_row = row + row_offset
-        neighbor_col = col + col_offset
+    for delta_row, delta_col in neighbor_offsets:
+        neighbor_row = row_index + delta_row
+        neighbor_col = col_index + delta_col
 
         if wrap_edges:
-            neighbor_row, neighbor_col = apply_boundary_condition(
-                board, neighbor_row, neighbor_col, wrap_edges
+            neighbor_row, neighbor_col = fix_grid_boundaries(
+                game_board, neighbor_row, neighbor_col, wrap_edges
             )
         else:
             if (
@@ -80,70 +77,66 @@ def count_live_neighbors(
             ):
                 continue
 
-        live_neighbors += board[neighbor_row][neighbor_col]
+        alive_neighbors_count += game_board[neighbor_row][neighbor_col]
 
-    return live_neighbors
-
+    return alive_neighbors_count
 
 def next_generation(
-    board: List[List[int]],
+    current_board: List[List[int]],
     wrap_edges: bool = True
 ) -> List[List[int]]:
     """
-    Создаёт следующее поколение клеток по правилам игры "Жизнь".
+    Creates the next generation based on the current state following "Game of Life" rules.
 
     Args:
-        board: Текущее поколение
-        wrap_edges: Флаг замкнутых границ
+        current_board: The current grid of cells
+        wrap_edges: Whether to enable wrap-around for edges
 
     Returns:
-        Новое поколение клеток
+        New grid of cells representing the next generation
     """
-    total_rows = len(board)
-    total_cols = len(board[0])
+    rows_count = len(current_board)
+    cols_count = len(current_board[0])
 
-    new_board = [[0 for _ in range(total_cols)] for _ in range(total_rows)]
+    new_board = [[0 for _ in range(cols_count)] for _ in range(rows_count)]
 
-    for row in range(total_rows):
-        for col in range(total_cols):
-            neighbors_count = count_live_neighbors(
-                board, row, col, wrap_edges
-            )
+    for row_idx in range(rows_count):
+        for col_idx in range(cols_count):
+            neighbors = count_live_neighbors(current_board, row_idx, col_idx, wrap_edges)
 
-            if (
-                (board[row][col] == 1 and neighbors_count in (2, 3))
-                or (board[row][col] == 0 and neighbors_count == 3)
-            ):
-                new_board[row][col] = 1
+            if (current_board[row_idx][col_idx] == 1 and neighbors in (2, 3)) or \
+               (current_board[row_idx][col_idx] == 0 and neighbors == 3):
+                new_board[row_idx][col_idx] = 1
 
     return new_board
 
-
-def count_live_cells(board: List[List[int]]) -> int:
+def count_live_cells_on_board(
+    game_board: List[List[int]]
+) -> int:
     """
-    Возвращает общее количество живых клеток.
+    Counts how many cells are alive on the entire board.
 
     Args:
-        board: Игровое поле
+        game_board: The game board as a list of lists
 
     Returns:
-        Количество живых клеток
+        Total number of live cells
     """
-    return sum(sum(row) for row in board)
+    total_alive = sum(sum(row) for row in game_board)
+    return total_alive
 
-
-def is_stable(
-    previous_board: List[List[int]],
+def check_if_stable(
+    prev_board: List[List[int]],
     current_board: List[List[int]]
 ) -> bool:
     """
-    Проверяет, стабилизировалась ли система (нет изменений).
+    Checks if the game has stabilized — that is, no changes between generations.
 
     Args:
-        previous_board: Предыдущее поколение
-        current_board: Текущее поколение
+        prev_board: The previous generation grid
+        current_board: The current generation grid
 
     Returns:
-        True если поколения идентичны
+        True if no changes occur, false otherwise
     """
-    return previous_board == current_board
+    return prev_board == current_board
