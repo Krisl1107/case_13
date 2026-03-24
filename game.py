@@ -2,309 +2,266 @@ import pygame
 import logging
 from typing import Optional, Tuple, List
 
-# Настройка логирования
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# ========== КОНСТАНТЫ ==========
-# Цвета (RGB)
-ALIVE_COLOR = (50, 205, 50)
+# Colors for the game: Alive cells, Dead cells, Grid lines, UI text, highlight on hover
+ALIVE_COLOR = (255, 20, 147)
 DEAD_COLOR = (30, 30, 30)
-GRID_COLOR = (60, 60, 60)
+GRID_LINE_COLOR = (60, 60, 60)
 UI_TEXT_COLOR = (255, 255, 255)
 HOVER_COLOR = (100, 100, 100)
 
-# Настройки UI
-UI_HEIGHT = 100
-UI_PADDING = 10
-CONTROLS_HEIGHT = 40
+# Interface settings
+UI_PANEL_HEIGHT = 100  # Height of the UI panel at the bottom
+UI_MARGIN = 10         # Margins around UI elements
+CONTROLS_HEIGHT = 40   # Height of control instructions area
 
-# Кэширование шрифтов
-_font_cache = {}
-_font_small_cache = {}
+# Fonts cache
+_fonts_cache = {}
+_small_fonts_cache = {}
 
-
-def _get_font(size: int = 24):
-    """Кэшированное получение шрифта."""
-    if size not in _font_cache:
-        _font_cache[size] = pygame.font.Font(None, size)
-    return _font_cache[size]
-
-
-def _get_font_small(size: int = 18):
-    """Кэшированное получение маленького шрифта."""
-    if size not in _font_small_cache:
-        _font_small_cache[size] = pygame.font.Font(None, size)
-    return _font_small_cache[size]
-
-
-# ========== ИНИЦИАЛИЗАЦИЯ ==========
-def init_display(rows: int, cols: int, cell_size: int = 20) -> Tuple[pygame.Surface, int, int, int]:
+def get_font(size: int = 24):
     """
-    Инициализирует окно Pygame.
+    Get a font of the specified size. Caches fonts for better performance.
+
+    Args:
+        size (int): Font size.
 
     Returns:
-        tuple: (screen, cell_size, rows, cols)
+        pygame.font.Font: Font object.
     """
-    try:
-        pygame.init()
+    if size not in _fonts_cache:
+        _fonts_cache[size] = pygame.font.Font(None, size)
+    return _fonts_cache[size]
 
-        width = cols * cell_size
-        height = rows * cell_size + UI_HEIGHT
+def get_small_font(size: int = 18):
+    """
+    Get a small font of the specified size. Uses caching.
 
-        screen = pygame.display.set_mode((width, height))
-        pygame.display.set_caption("Conway's Game of Life")
+    Args:
+        size (int): Font size.
 
-        # Удалите следующую строку, она некорректна
-        # pygame.display.set_alpha(None)
+    Returns:
+        pygame.font.Font: Font object.
+    """
+    if size not in _small_fonts_cache:
+        _small_fonts_cache[size] = pygame.font.Font(None, size)
+    return _small_fonts_cache[size]
 
-        return screen, cell_size, rows, cols
+def init_display(total_rows: int, total_cols: int, cell_size: int = 20) -> Tuple[pygame.Surface, int, int, int]:
+    """
+    Initialize the game window based on grid dimensions.
 
-    except pygame.error as e:
-        logger.error(f"Failed to initialize display: {e}")
-        raise
+    Args:
+        total_rows (int): Number of rows.
+        total_cols (int): Number of columns.
+        cell_size (int): Size of each cell.
 
+    Returns:
+        Tuple containing the display surface, cell size, total rows, and total columns.
+    """
+    pygame.init()
+    width = total_cols * cell_size
+    height = total_rows * cell_size + UI_PANEL_HEIGHT
+    screen = pygame.display.set_mode((width, height))
+    pygame.display.set_caption("Conway's Game of Life")
+    return screen, cell_size, total_rows, total_cols
 
-# ========== ОПТИМИЗИРОВАННАЯ ОТРИСОВКА СЕТКИ ==========
 def draw_grid(screen: pygame.Surface, grid: List[List[int]],
-              cell_size: int, hover_pos: Optional[Tuple[int, int]] = None) -> None:
+              cell_size: int, hover_cell: Optional[Tuple[int, int]] = None) -> None:
     """
-    Отрисовывает сетку клеток с оптимизацией.
+    Draws the current state of the grid. Efficiently renders only necessary parts,
+    highlighting the cell under the cursor.
+
+    Args:
+        screen (pygame.Surface): Surface to draw on.
+        grid (list of list of int): 2D array with cell states.
+        cell_size (int): Size of each cell.
+        hover_cell (tuple, optional): Cell coordinates under the cursor.
     """
     if not grid:
         return
-
-    rows = len(grid)
-    cols = len(grid[0]) if rows > 0 else 0
-
+    total_rows = len(grid)
+    total_cols = len(grid[0]) if total_rows > 0 else 0
+    rect = pygame.Rect(0, 0, cell_size, cell_size)
     try:
-        # Оптимизация: предварительное создание rect
-        rect = pygame.Rect(0, 0, cell_size, cell_size)
-
-        # Отрисовка клеток
-        for row in range(rows):
-            rect.y = row * cell_size
-            for col in range(cols):
-                rect.x = col * cell_size
-
-                # Быстрое определение цвета
-                if grid[row][col]:
+        for row_idx in range(total_rows):
+            rect.y = row_idx * cell_size
+            for col_idx in range(total_cols):
+                rect.x = col_idx * cell_size
+                cell_value = grid[row_idx][col_idx]
+                if cell_value:
                     color = ALIVE_COLOR
-                elif hover_pos and (row, col) == hover_pos:
+                elif hover_cell and (row_idx, col_idx) == hover_cell:
                     color = HOVER_COLOR
                 else:
-                    continue  # Пропускаем отрисовку мёртвых клеток (экономия времени)
-
+                    continue
                 pygame.draw.rect(screen, color, rect)
-
-        # Отрисовка линий сетки (только если нужно)
-        draw_grid_lines(screen, rows, cols, cell_size)
-
+        draw_grid_lines(screen, total_rows, total_cols, cell_size)
     except (IndexError, TypeError, pygame.error) as e:
-        logger.error(f"Error drawing grid: {e}")
-
+        logger.error(f"Error during drawing: {e}")
 
 def draw_grid_lines(screen: pygame.Surface, rows: int, cols: int, cell_size: int) -> None:
     """
-    Оптимизированная отрисовка линий сетки.
+    Draws grid lines on the surface.
+
+    Args:
+        screen (pygame.Surface): Surface to draw on.
+        rows (int): Number of rows.
+        cols (int): Number of columns.
+        cell_size (int): Size of each cell.
     """
     try:
         width = cols * cell_size
         height = rows * cell_size
-
-        # Вертикальные линии (используем один вызов line для каждой)
         for x in range(0, width, cell_size):
-            pygame.draw.line(screen, GRID_COLOR, (x, 0), (x, height))
-
-        # Горизонтальные линии
+            pygame.draw.line(screen, GRID_LINE_COLOR, (x, 0), (x, height))
         for y in range(0, height, cell_size):
-            pygame.draw.line(screen, GRID_COLOR, (0, y), (width, y))
-
+            pygame.draw.line(screen, GRID_LINE_COLOR, (0, y), (width, y))
     except pygame.error as e:
-        logger.error(f"Error drawing grid lines: {e}")
+        logger.error(f"Error during drawing grid lines: {e}")
 
-
-# ========== РАБОТА С МЫШЬЮ ==========
-def get_cell_from_mouse(pos: Tuple[int, int], cell_size: int,
-                        rows: int, cols: int) -> Optional[Tuple[int, int]]:
+def get_cell_from_mouse(mouse_pos: Tuple[int, int], cell_size: int,
+                        total_rows: int, total_cols: int) -> Optional[Tuple[int, int]]:
     """
-    Быстрое преобразование координат мыши в индексы клетки.
-    """
-    x, y = pos
+    Converts mouse position to grid cell coordinates.
 
-    # Быстрая проверка границ
+    Args:
+        mouse_pos (tuple): Mouse position (x, y).
+        cell_size (int): Size of each cell.
+        total_rows (int): Total number of rows.
+        total_cols (int): Total number of columns.
+
+    Returns:
+        Tuple (row, col) if inside the grid, or None.
+    """
+    x, y = mouse_pos
     if x < 0 or y < 0:
         return None
-
-    grid_height = rows * cell_size
+    grid_height = total_rows * cell_size
     if y >= grid_height:
         return None
-
-    col = x // cell_size
-    row = y // cell_size
-
-    if row < rows and col < cols:
-        return (row, col)
+    col_idx = x // cell_size
+    row_idx = y // cell_size
+    if row_idx < total_rows and col_idx < total_cols:
+        return (row_idx, col_idx)
     return None
 
-
-# ========== ОПТИМИЗИРОВАННЫЙ UI ==========
 def draw_ui(screen: pygame.Surface, generation: int, speed: float,
-            running: bool, rows: int, cols: int) -> None:
+            is_running: bool, total_rows: int, total_cols: int) -> None:
     """
-    Отрисовывает UI с кэшированием текста.
+    Draws info panel: current generation, speed, game state, and grid size.
+
+    Args:
+        screen (pygame.Surface): Surface to draw on.
+        generation (int): Current generation number.
+        speed (float): Simulation speed (FPS).
+        is_running (bool): Game running or paused.
+        total_rows (int): Number of rows.
+        total_cols (int): Number of columns.
     """
     try:
-        font = _get_font(24)
-        font_small = _get_font_small(18)
-
-        screen_height = screen.get_height()
-
-        # Статус с цветом
-        status = "▶ RUNNING" if running else "⏸ PAUSED"
-        status_color = (100, 255, 100) if running else (255, 100, 100)
-
-        # Кэширование текста для часто обновляемых значений
-        # (generation и speed обновляются часто, поэтому не кэшируем)
+        main_font = get_font(24)
+        small_font = get_small_font(18)
+        height = screen.get_height()
+        status_text = "▶ RUNNING" if is_running else "⏸ PAUSED"
+        status_color = (100, 255, 100) if is_running else (255, 100, 100)
         info_items = [
-            (f"Generation: {generation}", UI_TEXT_COLOR, (UI_PADDING, 5)),
-            (f"Speed: {speed:.1f} FPS", UI_TEXT_COLOR, (UI_PADDING, 30)),
-            (status, status_color, (UI_PADDING, 55)),
-            (f"Grid: {rows}×{cols}", UI_TEXT_COLOR, (UI_PADDING, 80)),
+            (f"Generation: {generation}", UI_TEXT_COLOR, (UI_MARGIN, 5)),
+            (f"Speed: {speed:.1f} FPS", UI_TEXT_COLOR, (UI_MARGIN, 30)),
+            (status_text, status_color, (UI_MARGIN, 55)),
+            (f"Grid: {total_rows}×{total_cols}", UI_TEXT_COLOR, (UI_MARGIN, 80)),
         ]
-
-        # Отрисовка информации
-        for text, color, pos in info_items:
-            surface = font.render(text, True, color)
-            screen.blit(surface, pos)
-
-        # Подсказки по управлению (статический текст, можно кэшировать)
-        _draw_controls(screen, font_small, screen_height)
-
+        for text, color, position in info_items:
+            surface = main_font.render(text, True, color)
+            screen.blit(surface, position)
+        _draw_control_instructions(screen, small_font, height)
     except pygame.error as e:
-        logger.error(f"Error drawing UI: {e}")
+        logger.error(f"Error during UI drawing: {e}")
 
-
-# Кэш для подсказок (рисуются один раз)
 _controls_cache = None
 _controls_positions = None
 
-
-def _draw_controls(screen: pygame.Surface, font, screen_height: int) -> None:
+def _draw_control_instructions(screen: pygame.Surface, font, screen_height: int) -> None:
     """
-    Отрисовка подсказок с кэшированием.
+    Draws control instructions at the bottom of the screen. Uses cache.
+
+    Args:
+        screen (pygame.Surface): Surface to draw on.
+        font (pygame.font.Font): Font for text.
+        screen_height (int): Height of the window.
     """
     global _controls_cache, _controls_positions
-
     if _controls_cache is None:
-        controls = [
+        controls_lines = [
             "SPACE: Play/Pause | S/→: Step | R: Reset | C: Clear",
             "L: Load | F: Save | +/-: Speed | ESC: Exit"
         ]
-
         _controls_cache = []
         _controls_positions = []
+        for idx, line in enumerate(controls_lines):
+            text_surf = font.render(line, True, UI_TEXT_COLOR)
+            _controls_cache.append(text_surf)
+            _controls_positions.append((UI_MARGIN, screen_height - CONTROLS_HEIGHT + idx * 20))
+    for surf, pos in zip(_controls_cache, _controls_positions):
+        screen.blit(surf, pos)
 
-        for i, control in enumerate(controls):
-            surface = font.render(control, True, UI_TEXT_COLOR)
-            _controls_cache.append(surface)
-            _controls_positions.append((UI_PADDING, screen_height - CONTROLS_HEIGHT + i * 20))
-
-    # Отрисовка кэшированных подсказок
-    for surface, pos in zip(_controls_cache, _controls_positions):
-        screen.blit(surface, pos)
-
-
-# ========== УПРАВЛЕНИЕ ЦВЕТАМИ ==========
-def handle_color_scheme(alive_color: Optional[Tuple[int, int, int]] = None,
-                        dead_color: Optional[Tuple[int, int, int]] = None,
-                        grid_color: Optional[Tuple[int, int, int]] = None,
-                        ui_text_color: Optional[Tuple[int, int, int]] = None) -> None:
+def handle_color_scheme(alive: Optional[Tuple[int, int, int]] = None,
+                        dead: Optional[Tuple[int, int, int]] = None,
+                        grid: Optional[Tuple[int, int, int]] = None,
+                        ui_text: Optional[Tuple[int, int, int]] = None) -> None:
     """
-    Обновляет цветовую схему.
+    Changes colors: for alive cells, dead cells, grid lines, and UI text.
+
+    Args:
+        alive (tuple, optional): RGB for alive cells.
+        dead (tuple, optional): RGB for dead cells.
+        grid (tuple, optional): RGB for grid lines.
+        ui_text (tuple, optional): RGB for UI text.
     """
-    global ALIVE_COLOR, DEAD_COLOR, GRID_COLOR, UI_TEXT_COLOR
-
-    def is_valid_color(color):
-        return (isinstance(color, (tuple, list)) and
-                len(color) == 3 and
-                all(0 <= c <= 255 for c in color))
-
-    if alive_color is not None and is_valid_color(alive_color):
-        ALIVE_COLOR = alive_color
-    if dead_color is not None and is_valid_color(dead_color):
-        DEAD_COLOR = dead_color
-    if grid_color is not None and is_valid_color(grid_color):
-        GRID_COLOR = grid_color
-    if ui_text_color is not None and is_valid_color(ui_text_color):
-        UI_TEXT_COLOR = ui_text_color
-
-    # Сбрасываем кэш подсказок при смене цвета текста
+    global ALIVE_COLOR, DEAD_COLOR, GRID_LINE_COLOR, UI_TEXT_COLOR
+    def valid_color(c):
+        return isinstance(c, (tuple, list)) and len(c) == 3 and all(0 <= val <= 255 for val in c)
+    if alive and valid_color(alive):
+        ALIVE_COLOR = alive
+    if dead and valid_color(dead):
+        DEAD_COLOR = dead
+    if grid and valid_color(grid):
+        GRID_LINE_COLOR = grid
+    if ui_text and valid_color(ui_text):
+        UI_TEXT_COLOR = ui_text
     global _controls_cache
-    if ui_text_color is not None:
+    if ui_text:
         _controls_cache = None
 
-
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 def clear_screen(screen: pygame.Surface) -> None:
-    """Очищает экран."""
+    """
+    Clears the entire surface.
+
+    Args:
+        screen (pygame.Surface): Surface to clear.
+    """
     screen.fill(DEAD_COLOR)
 
-
 def update_display() -> None:
-    """Обновляет экран."""
+    """
+    Updates the display.
+    """
     pygame.display.flip()
-
 
 def get_display_size(screen: pygame.Surface, cell_size: int) -> Tuple[int, int]:
     """
-    Возвращает количество строк и столбцов, помещающихся на экране.
-    """
-    width, height = screen.get_size()
-    cols = width // cell_size
-    rows = (height - UI_HEIGHT) // cell_size
-    return rows, cols
-
-
-def draw_cell(screen: pygame.Surface, row: int, col: int,
-              cell_size: int, state: int) -> None:
-    """
-    Оптимизированная перерисовка одной клетки.
-    """
-    rect = pygame.Rect(col * cell_size, row * cell_size, cell_size, cell_size)
-    color = ALIVE_COLOR if state else DEAD_COLOR
-    pygame.draw.rect(screen, color, rect)
-
-    # Перерисовка линий сетки вокруг клетки
-    x, y = rect.x, rect.y
-    pygame.draw.line(screen, GRID_COLOR, (x, y), (x + cell_size, y))
-    pygame.draw.line(screen, GRID_COLOR, (x, y), (x, y + cell_size))
-    pygame.draw.line(screen, GRID_COLOR, (x + cell_size, y), (x + cell_size, y + cell_size))
-    pygame.draw.line(screen, GRID_COLOR, (x, y + cell_size), (x + cell_size, y + cell_size))
-
-
-# ========== ОПТИМИЗАЦИЯ ДЛЯ БОЛЬШИХ СЕТОК ==========
-def draw_grid_optimized(screen: pygame.Surface, grid: List[List[int]],
-                        cell_size: int, dirty_rects: List[pygame.Rect] = None) -> None:
-    """
-    Отрисовка только изменённых областей (для производительности).
+    Returns the size of the display in cells.
 
     Args:
-        dirty_rects: Список прямоугольников, которые нужно перерисовать
+        screen (pygame.Surface): Surface.
+        cell_size (int): Size of each cell.
+
+    Returns:
+        Tuple (rows, cols).
     """
-    if dirty_rects is None:
-        # Если нет списка изменений, рисуем всё
-        draw_grid(screen, grid, cell_size)
-        return
-
-    for rect in dirty_rects:
-        # Определяем границы в клетках
-        start_row = rect.y // cell_size
-        start_col = rect.x // cell_size
-        end_row = (rect.y + rect.height) // cell_size + 1
-        end_col = (rect.x + rect.width) // cell_size + 1
-
-        # Перерисовываем только изменённые клетки
-        for row in range(start_row, min(end_row, len(grid))):
-            for col in range(start_col, min(end_col, len(grid[0]))):
-                draw_cell(screen, row, col, cell_size, grid[row][col])
+    width, height = screen.get_size()
+    total_rows = height // cell_size
+    total_cols = width // cell_size
+    return total_rows, total_cols
