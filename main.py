@@ -33,7 +33,7 @@ def handle_keyboard_input(event: pygame.event.Event, state: dict) -> tuple[list[
         grid = create_empty_grid(len(grid), len(grid[0]))
         state['generation'] = 0
     elif event.key == pygame.K_l:
-        filename = 'config.txt'
+        filename = 'input.txt'
         grid = load_grid_from_file(filename)
         state['generation'] = 0
     elif event.key == pygame.K_f:
@@ -67,7 +67,6 @@ def handle_mouse_click(event: pygame.event.Event, grid: list[list[int]], rows: i
         mouse_pos = pygame.mouse.get_pos()
         rows, cols = 30, 40
         cell_size = 20
-        screen, cell_size, rows, cols = game.init_display(rows, cols, cell_size)
         row, col = game.get_cell_from_mouse(mouse_pos, cell_size, rows, cols)
         if row is not None and col is not None:
             grid[row][col] = 1 - grid[row][col]
@@ -104,7 +103,6 @@ def main() -> None:
     """
     rows, cols = 30, 40
     cell_size = 20
-    screen, cell_size, rows, cols = game.init_display(rows, cols, cell_size)
 
     grid = random_grid(rows, cols, prob=0.5)
     state = {
